@@ -2,20 +2,34 @@
 #
 #
 
+# ---------------------------------------------------------------------------------------
 # get cpu core number
 export CPU_JOB_NUM=$(grep processor /proc/cpuinfo | awk '{field=$NF};END{print field+2}')
 
+# ---------------------------------------------------------------------------------------
+# target core
 export ARCH=arm
 
-export BUILD_TARGET=""
-export TARGET_BOARD=""
-export BUILD_DEBUG=0
-export BUILD_TOOLCHAIN=""
+# ---------------------------------------------------------------------------------------
+# get current path
+export BUILD_ROOT_PATH=`pwd`
 
-# for betaflight
-export MAJOR_VERSION=3
-export MINOR_VERSION=1
-export SUB_VERSION=0
+# ---------------------------------------------------------------------------------------
+# path of source
+export BUILD_FC_BETAFLIGHT_PATH=${BUILD_ROOT_PATH}/fc/betaflight
+export BUILD_FC_CLEANFLIGHT_PATH=${BUILD_ROOT_PATH}/fc/cleanflight
+export BUILD_FC_ST_PATH=${BUILD_ROOT_PATH}/fc/st_fcu_f401
+export BUILD_TRANSMITTER_BT_NRF51822_PATH=${BUILD_ROOT_PATH}/transmitter/bt_nrf51822
+export BUILD_TRANSMITTER_BT_NRF52832_PATH=${BUILD_ROOT_PATH}/transmitter/bt_nrf52832
+export BUILD_TRANSMITTER_BT_ST_PATH=${BUILD_ROOT_PATH}/transmitter/bt_st
+export BUILD_APP_NORDIC_PATH=${BUILD_ROOT_PATH}/app/nordic
+export BUILD_APP_ST_PATH=${BUILD_ROOT_PATH}/app/st
+
+# ---------------------------------------------------------------------------------------
+# path of toolchain
+#export BUILD_TOOLCHAIN_ROOT_PATH=""
+export BUILD_TOOLCHAIN_PATH=""
+export BUILD_TOOLCHAIN_PREFIX=""
 
 # toolchain name
 export TOOLCHAIN_4_9_3_PATH_NAME="gcc-arm-none-eabi-4_9-2015q3"
@@ -27,338 +41,527 @@ export TOOLCHAIN_5_4_1_PREFIX="arm-none-eabi"
 export TOOLCHAIN_6_3_1_PATH_NAME="gcc-arm-none-eabi-6-2017-q1-update"
 export TOOLCHAIN_6_3_1_PREFIX="arm-none-eabi"
 
-export TOOLCHAIN_FULL_PATH=""
-export TOOLCHAIN_PREFIX_NAME=""
+export TOOLCHAIN_7_2_1_PATH_NAME="gcc-arm-none-eabi-7-2017-q4-major"
+export TOOLCHAIN_7_2_1_PREFIX="arm-none-eabi"
 
-export PLATFORM=""
-export BUILD_ROOT_PATH=`pwd`
+# ---------------------------------------------------------------------------------------
+#
+export BUILD_PLATFORM=""
+export BUILD_TYPE=""
+export BUILD_BOARD=""
+export BUILD_TOOLCHAIN=""
+export BUILD_MACHINE=""
 
-# -----------------------------------------------------------------
+export BUILD_CLEAN="not clean"
+export BUILD_DEUGB="not debug"
 
+# ---------------------------------------------------------------------------------------
+#
 function usage()
 {
 	echo
-	echo "./build.sh buid=[BUILD_TARGET] target=[TARGET_BOARD] toolchain=[TOOLCHAIN_VERSION] debug "
-	echo "	[BUILD_TARGET]"
-	echo "		cleanflight"
-	echo "			[TARGET_BOARD]"
-	echo "				LUX_RACE          : "
-	echo "				SPARKY            : "
-	echo "				SPRACINGF3        : "
-	echo "				STM32F3DISCOVERY  :"
-	echo "		betaflight"
-	echo "			[TARGET_BOARD]"
-	echo "				LUX_RACE          : "
-	echo "				SPARKY            : "
-	echo "				SPRACINGF3        : "
-	echo "				STM32F3DISCOVERY  :"
-	echo "		nordic"
-	echo "			[TARGET_BOARD]"
-	echo "				s130_central      : "
-	echo "				s130_peripheral   : "
-	echo "				s130_all          : "
-   echo "            s130_beacon       : "
-	echo "	[TOOLCHAIN_VERSION]"
-	echo "		4.9.3                             : "
-	echo "		5.4.1                             : "
-	echo "		6.3.1                             : "
-	echo "	debug                                     : "
+	echo "./script/build.sh buid=[PLATFORM] type=[TYPE] board=[BOARD] toolchain=[TOOLCHAIN_VERSION] clean=[any_value] debug=[any_value]"
+	echo "  [PLATFORM]"
+	echo "    fc            : flight controller"
+	echo "    transmitter   : transmitter"
+	echo "  [TYPE]"
+	echo "    PLATFORM=fc"
+	echo "      cleanflight"
+	echo "      betaflight"
+	echo "      st"
+	echo "    PLATFORM=transmitter"
+	echo "      nordic51822"
+	echo "      nordic52832"
+	echo "      st"
+	echo "  [BOARD]"
+	echo "    PLATFORM=fc"
+	echo "      LUX_RACE"
+	echo "      SPARKY"
+	echo "      SPRACINGF3"
+	echo "      STM32F3DISCOVERY"
+	echo "      ST_FCU_F401"
+	echo "      STM32F745DISCOVERY"
+	echo "  [TOOLCHAIN_VERSION]"
+	echo "    4.9.3"
+	echo "    5.4.1"
+	echo "    6.3.1"
+	echo "    7.2.1"
 	echo
 }
 
-function build()
+# ---------------------------------------------------------------------------------------
+# variable for build
+# ---------------------------------------------------------------------------------------
+export START_TIME=""
+export END_TIME=""
+export BUILD_OUTPUT_ROOT_PATH=""
+export BUILD_SOURCE_ROOT_PATH=""
+
+# ---------------------------------------------------------------------------------------
+# build_start_time
+# ---------------------------------------------------------------------------------------
+function build_start_time()
 {
-	echo "$1 $2"
-	if [ ! -e "./output/$1" ]
-	then
-		echo "mkdir -p ./output/$1"
-		mkdir -p ./output/$1/
-	else
-		echo "rm -rf ./output/$1/*"
-		rm -rf ./output/$1/*
-	fi
-
-	pushd .
-	cd $1
-	{
-		START_TIME=`date +%s`
-
-		make clean TARGET=$2
-		if [ ${BUILD_DEBUG} == 1 ]
-		then
-			echo "build : gdb mode"
-			make -j$CPU_JOB_NUM TARGET=$2 DEBUG=GDB DEBUG_PORT=DEBUG_SERIAL_UART1
-		else
-			echo "build : none gdb mode"
-			make -j$CPU_JOB_NUM TARGET=$2
-		fi
-
-		if [ $? != 0 ]
-		then
-			echo "Build Errror !!!"
-			return 1
-		fi
-
-        for hex_file in ./obj/*.hex
-        do
-			echo "cp $hex_file $BUILD_ROOT_PATH/output/$1/."
-			cp $hex_file $BUILD_ROOT_PATH/output/$1/.
-        done
-
-		# for cleanflight
-#		if [ -e "./obj/$1_$2.hex" ]
-#		then
-#			echo "cp \"./obj/$1_$2.hex\" $BUILD_ROOT_PATH/output/$1/."
-#			cp "./obj/$1_$2.hex" $BUILD_ROOT_PATH/output/$1/.
-#		fi
-
-		# for betaflight
-#		if [ -e "./obj/$1_${MAJOR_VERSION}.${MINOR_VERSION}.${SUB_VERSION}_$2.hex" ]
-#		then
-#			echo "cp \"./obj/$1_${MAJOR_VERSION}.${MINOR_VERSION}.${SUB_VERSION}_$2.hex\" $BUILD_ROOT_PATH/output/$1/."
-#			cp "./obj/$1_${MAJOR_VERSION}.${MINOR_VERSION}.${SUB_VERSION}_$2.hex" $BUILD_ROOT_PATH/output/$1/.
-#		fi
-
-		# for cleanflight & betaflight
-		if [ -e "./obj/main/$1_$2.elf" ]
-		then
-			echo "cp \"./obj/main/$1_$2.elf\" $BUILD_ROOT_PATH/output/$1/."
-			cp "./obj/main/$1_$2.elf" $BUILD_ROOT_PATH/output/$1/.
-
-			echo "cp \"./obj/main/$1_$2.map\" $BUILD_ROOT_PATH/output/$1/."
-			cp "./obj/main/$1_$2.map" $BUILD_ROOT_PATH/output/$1/.
-		fi
-
-		# for central of nordic
-		if [ -e "./_build/nrf51_uart_central.hex" ]
-		then
-			echo "cp ./_build/nrf51_uart_central.hex $BUILD_ROOT_PATH/output/$1/."
-			cp ./_build/nrf51_uart_central.hex $BUILD_ROOT_PATH/output/$1/.
-
-			echo "cp ./_build/nrf51_uart_central.map $BUILD_ROOT_PATH/output/$1/."
-			cp ./_build/nrf51_uart_central.map $BUILD_ROOT_PATH/output/$1/.
-
-			echo "cp ./_build/nrf51_uart_central.out $BUILD_ROOT_PATH/output/$1/."
-			cp ./_build/nrf51_uart_central.out $BUILD_ROOT_PATH/output/$1/.
-		fi
-
-		# for central of nordic
-		if [ -e "./_build/nrf51_uart_peripheral.hex" ]
-		then
-			echo "cp ./_build/nrf51_uart_peripheral.hex $BUILD_ROOT_PATH/output/$1/."
-			cp ./_build/nrf51_uart_peripheral.hex $BUILD_ROOT_PATH/output/$1/.
-
-			echo "cp ./_build/nrf51_uart_peripheral.map $BUILD_ROOT_PATH/output/$1/."
-			cp ./_build/nrf51_uart_peripheral.map $BUILD_ROOT_PATH/output/$1/.
-
-			echo "cp ./_build/nrf51_uart_peripheral.out $BUILD_ROOT_PATH/output/$1/."
-			cp ./_build/nrf51_uart_peripheral.out $BUILD_ROOT_PATH/output/$1/.
-		fi
-
-		# for bt_transmitter of nordic
-		if [ -e "./_build/bt_transmitter.hex" ]
-		then
-			echo "cp ./_build/bt_transmitter.hex $BUILD_ROOT_PATH/output/$1/."
-			cp ./_build/bt_transmitter.hex $BUILD_ROOT_PATH/output/$1/.
-
-			echo "cp ./_build/bt_transmitter.map $BUILD_ROOT_PATH/output/$1/."
-			cp ./_build/bt_transmitter.map $BUILD_ROOT_PATH/output/$1/.
-
-			echo "cp ./_build/bt_transmitter.out $BUILD_ROOT_PATH/output/$1/."
-			cp ./_build/bt_transmitter.out $BUILD_ROOT_PATH/output/$1/.
-		fi
-
-		# for nordic
-		if [ -e "../components/softdevice/s130/hex/s130_nrf51_2.0.0_softdevice.hex" ]
-		then
-			echo "cp ../components/softdevice/s130/hex/s130_nrf51_2.0.0_softdevice.hex $BUILD_ROOT_PATH/output/$1/."
-			cp ../components/softdevice/s130/hex/s130_nrf51_2.0.0_softdevice.hex $BUILD_ROOT_PATH/output/$1/.
-		fi
-
-		END_TIME=`date +%s`
-
-		echo "============================================================================="
-		echo "Build time : $((($END_TIME-$START_TIME)/60)) minutes $((($END_TIME-$START_TIME)%60)) seconds"
-		echo "============================================================================="
-	} 2>&1 |tee $BUILD_ROOT_PATH/output/$1/build.out
-	popd
-	
+   START_TIME=`date +%s`
 }
 
-# main routine
-# ----------------------------------------------
+# ---------------------------------------------------------------------------------------
+# build_end_time
+# ---------------------------------------------------------------------------------------
+function build_end_time()
 {
-    clear
-#    check_param
+   END_TIME=`date +%s`
 
-	 while [ $# -ge 1 ]
-	 do
-		key="$1"
+   echo "================================================================================="
+   echo "Build time : $((($END_TIME-$START_TIME)/60)) minutes $((($END_TIME-$START_TIME)%60)) seconds"
+   echo "================================================================================="
+}
 
-		case $key in
-			"build="*)
-				BUILD_TARGET=${key#build=}
-				;;
-			"target="*)
-				TARGET_BOARD=${key#target=}
-				;;
-			"debug"*)
-				BUILD_DEBUG=1
-				;;
-			"toolchain="*)
-				BUILD_TOOLCHAIN=${key#toolchain=}
-				;;
-			*)
-				echo "Unknown Param : $key"
-				;;
-		esac
+# ---------------------------------------------------------------------------------------
+# set oputput directory
+# ---------------------------------------------------------------------------------------
+function build_output_path()
+{
+   BUILD_OUTPUT_ROOT_PATH=${BUILD_ROOT_PATH}/output/$1
 
-		shift
-	 done
+   if [ ! -e ${BUILD_OUTPUT_ROOT_PATH} ]
+   then
+      echo "mkdir -p ${BUILD_OUTPUT_ROOT_PATH}"
+      mkdir -p ${BUILD_OUTPUT_ROOT_PATH}
+   else
+      echo "rm -rf ${BUILD_OUTPUT_ROOT_PATH}/*"
+      rm -rf ${BUILD_OUTPUT_ROOT_PATH}*
+   fi
 
-	 # check Target
-	 case ${BUILD_TARGET} in
-		"cleanflight")
-			case ${TARGET_BOARD} in
-				"LUX_RACE")
-					;;
-				"SPARKY")
-					;;
-				"SPRACINGF3")
-					;;
-				"STM32F3DISCOVERY")
-					;;
-				*)
-					echo "Unknown TARGET BOARD : ${BUILD_TARGET}"
-					usage
-					exit 1
-					;;
-			esac
-			;;
-		"betaflight")
-			case ${TARGET_BOARD} in
-				"LUX_RACE")
-					;;
-				"SPARKY")
-					;;
-				"SPRACINGF3")
-					;;
-				"STM32F3DISCOVERY")
-					;;
-				*)
-					echo "Unknown TARGET BOARD : ${BUILD_TARGET}"
-					usage
-					exit 1
-					;;
-			esac
-			;;
-		"nordic")
-			case ${TARGET_BOARD} in
-				"s130_central")
-					;;
-				"s130_peripheral")
-					;;
-				"transmitter")
-                    ;;
-				"s130_all")
-					;;
-				"s130_beacon")
-					;;
-				*)
-					echo "Unknown TARGET BOARD : ${BUILD_TARGET}"
-					usage
-					exit 1
-					;;
-			esac
-			;;
-		*)
-			echo "Unkown target : ${BUILD_TARGET}"
-			usage
-			exit 1
-			;;
-	 esac
+   mkdir -p ${BUILD_OUTPUT_ROOT_PATH}/log
+   mkdir -p ${BUILD_OUTPUT_ROOT_PATH}/bin
+}
 
-	# for check platform, default is linux
-	unamestr=`uname`
-	if [[ "$unamestr" == 'Linux' ]]; then
-		echo "Select Linux platform"
-		PLATFORM='linux'
-	elif [[ "$unamestr" == 'Darwin' ]]; then
-		# os x
-		PLATFORM='mac'
-		echo "Select Darwin platform"
+# ---------------------------------------------------------------------------------------
+# build
+# ---------------------------------------------------------------------------------------
+function build_platform()
+{
+	pushd .
+   cd $1
 
-	else
-		echo "Not supported platform : $unamestr"
-		exit 1
-	fi
+   if [ "${BUILD_CLEAN}" == "clean" ]
+   then
+   {
+      make clean TARGET=$2
+   }
+   fi
 
-	 # check toolchain
-	 case ${BUILD_TOOLCHAIN} in
-		"4.9.3")
-			TOOLCHAIN_FULL_PATH=${BUILD_ROOT_PATH}/toolchain/${PLATFORM}/${TOOLCHAIN_4_9_3_PATH_NAME}
-			TOOLCHAIN_PREFIX_NAME=${TOOLCHAIN_4_9_3_PREFIX}
-			;;
-		"5.4.1")
-			TOOLCHAIN_FULL_PATH=${BUILD_ROOT_PATH}/toolchain/${PLATFORM}/${TOOLCHAIN_5_4_1_PATH_NAME}
-			TOOLCHAIN_PREFIX_NAME=${TOOLCHAIN_5_4_1_PREFIX}
-			;;
-		"6.3.1")
-			TOOLCHAIN_FULL_PATH=${BUILD_ROOT_PATH}/toolchain/${PLATFORM}/${TOOLCHAIN_6_3_1_PATH_NAME}
-			TOOLCHAIN_PREFIX_NAME=${TOOLCHAIN_6_3_1_PREFIX}
-			;;
-		*)
-			TOOLCHAIN_FULL_PATH=${BUILD_ROOT_PATH}/toolchain/${PLATFORM}/${TOOLCHAIN_6_3_1_PATH_NAME}
-			TOOLCHAIN_PREFIX_NAME=${TOOLCHAIN_6_3_1_PREFIX}
-			;;
-	 esac
+   make -j$CPU_JOB_NUM TARGET=$2
+	popd
+}
 
-    # add tool-chain bin directory to PATH
-	 echo $TOOLCHAIN_FULL_PATH
-    export PATH=${TOOLCHAIN_FULL_PATH}/bin:$PATH
+# ---------------------------------------------------------------------------------------
+# copy binary
+# ---------------------------------------------------------------------------------------
+function build_copy_binary()
+{
+   find $1 -name "*.hex" -print  -exec cp {} ${BUILD_OUTPUT_ROOT_PATH}/bin/. \;
+   find $1 -name "*.elf" -print  -exec cp {} ${BUILD_OUTPUT_ROOT_PATH}/bin/. \;
+}
 
-    # check gcc compiler
-    ${TOOLCHAIN_PREFIX_NAME}-gcc -v
+# ---------------------------------------------------------------------------------------
+# copy binary
+# ---------------------------------------------------------------------------------------
+function build_copy_binary_nordic()
+{
+   find $1/bt_transmitter -name "*.hex" -print  -exec cp {} ${BUILD_OUTPUT_ROOT_PATH}/bin/. \;
+   find $1/bt_transmitter -name "*.out" -print  -exec cp {} ${BUILD_OUTPUT_ROOT_PATH}/bin/. \;
+   find $1 -name "s130_nrf51_2.0.0_softdevice.hex" -print  -exec cp {} ${BUILD_OUTPUT_ROOT_PATH}/bin/. \;
+}
 
-    if [ $? != 0 ]
-    then
-        echo
-        echo "Not found tool-chain for ARM Cortex-M !!!"
-        echo
-        exit 1
-    fi
 
-	 # check Target
-	 case ${BUILD_TARGET} in
-		"cleanflight")
-			build "cleanflight" ${TARGET_BOARD}
-			;;
-		"betaflight")
-			build "betaflight" ${TARGET_BOARD}
-			;;
-		"nordic")
-			export GNU_INSTALL_ROOT=${TOOLCHAIN_FULL_PATH}
-			export GNU_VERSION=${BUILD_TOOLCHAIN}
-			export GNU_PREFIX=${TOOLCHAIN_PREFIX_NAME}
-			case ${TARGET_BOARD} in
-				"s130_central")
-					build "nRF51_SDK_v11/nrf51_uart_central"
-					;;
-				"s130_peripheral")
-					build "nRF51_SDK_v11/nrf51_uart_peripheral"
-					;;
-				"transmitter")
-					build "nRF51_SDK_v11/bt_transmitter"
-					;;
-				"s130_beacon")
-					build "nRF51_SDK_v11/nrf51_beacon"
-					;;
-				"s130_all")
-					build "nRF51_SDK_v11/nrf51_uart_central"
-					build "nRF51_SDK_v11/nrf51_uart_peripheral"
-					;;
-			esac
-	 esac
+# ---------------------------------------------------------------------------------------
+# build cleanflight
+# ---------------------------------------------------------------------------------------
+function build_cleanflight()
+{
+   build_output_path $1
+   BUILD_SOURCE_ROOT_PATH=${BUILD_FC_CLEANFLIGHT_PATH}
+   {
+      build_start_time
+
+      build_platform ${BUILD_SOURCE_ROOT_PATH} $1
+      build_copy_binary ${BUILD_SOURCE_ROOT_PATH}
+
+      build_end_time
+   } 2>&1 |tee ${BUILD_OUTPUT_ROOT_PATH}/log/build.out
+}
+
+# ---------------------------------------------------------------------------------------
+# build betaflight
+# ---------------------------------------------------------------------------------------
+function build_betaflight()
+{
+   build_output_path $1
+   BUILD_SOURCE_ROOT_PATH=${BUILD_FC_BETAFLIGHT_PATH}
+   {
+      build_start_time
+
+      build_platform ${BUILD_SOURCE_ROOT_PATH} $1
+      build_copy_binary ${BUILD_SOURCE_ROOT_PATH}
+
+      build_end_time
+   } 2>&1 |tee ${BUILD_OUTPUT_ROOT_PATH}/log/build.out
+}
+
+# ---------------------------------------------------------------------------------------
+# build transmitter for nrf51822
+# ---------------------------------------------------------------------------------------
+function build_transmitter_nrf51822()
+{
+   build_output_path $1
+
+   export GNU_INSTALL_ROOT=${BUILD_TOOLCHAIN_PATH}
+   export GNU_VERSION=$2
+   export GNU_PREFIX=${BUILD_TOOLCHAIN_PREFIX}
+   BUILD_CLEAN="clean"
+
+   BUILD_SOURCE_ROOT_PATH=${BUILD_TRANSMITTER_BT_NRF51822_PATH}
+   {
+      build_start_time
+
+      build_platform ${BUILD_SOURCE_ROOT_PATH}/bt_transmitter
+      build_copy_binary_nordic ${BUILD_SOURCE_ROOT_PATH}
+
+      build_end_time
+   } 2>&1 |tee ${BUILD_OUTPUT_ROOT_PATH}/log/build.out
+}
+
+# ---------------------------------------------------------------------------------------
+# build transmitter for nrf52832
+# ---------------------------------------------------------------------------------------
+function build_transmitter_nrf52832()
+{
+   build_output_path $1
+   BUILD_SOURCE_ROOT_PATH=${BUILD_TRANSMITTER_BT_NRF52832_PATH}
+   {
+      build_start_time
+
+      build_platform ${BUILD_SOURCE_ROOT_PATH}
+
+      build_end_time
+   } 2>&1 |tee ${BUILD_OUTPUT_ROOT_PATH}/log/build.out
+}
+
+# ---------------------------------------------------------------------------------------
+# build transmitter for st
+# ---------------------------------------------------------------------------------------
+function build_transmitter_st()
+{
+   echo TARGET BOARD NAME : "$1"
+   BUILD_SOURCE_ROOT_PATH=${BUILD_TRANSMITTER_BT_ST_PATH}
+   {
+      build_start_time
+
+      build_platform ${BUILD_SOURCE_ROOT_PATH}
+
+      build_end_time
+   } 2>&1 |tee ${BUILD_OUTPUT_ROOT_PATH}/log/build.out
+}
+
+# ---------------------------------------------------------------------------------------
+# main routine
+# ---------------------------------------------------------------------------------------
+{
+   clear
+   # ====================================================================================
+   # parsing parameter
+   while [ $# -ge 1 ]
+   do
+   {
+      key="$1"
+      {
+         case $key in
+            "build="*)
+            {
+               BUILD_PLATFORM=${key#build=}
+            }
+            ;;
+            "type="*)
+            {
+               BUILD_TYPE=${key#type=}
+            }
+            ;;
+            "board="*)
+            {
+               BUILD_BOARD=${key#board=}
+            }
+            ;;
+            "toolchain="*)
+            {
+               BUILD_TOOLCHAIN=${key#toolchain=}
+            }
+            ;;
+            "clean="*)
+            {
+               BUILD_CLEAN="clean"
+            }
+            ;;
+            "debug="*)
+            {
+               BUILD_DEUGB="debug"
+            }
+            ;;
+            *)
+            {
+               echo "Unknown Param : $key"
+               usage
+               exit 0
+            }
+            ;;
+         esac
+      }
+      shift
+   }
+   done
+
+   # ====================================================================================
+   # check option for platform
+   {
+      case ${BUILD_PLATFORM} in
+         "fc")
+            {
+               case ${BUILD_TYPE} in
+                  "cleanflight")
+                     {
+                        case ${BUILD_BOARD} in
+                           "LUX_RACE")
+                              ;;
+                           "SPARKY")
+                              ;;
+                           "SPRACINGF3")
+                              ;;
+                           "STM32F3DISCOVERY")
+                              ;;
+                           "ST_FCU_F401")
+                              echo "Not yet supported."
+                              usage
+                              exit 0
+                              ;;
+                           "STM32F745DISCOVERY")
+                              echo "Not yet supported."
+                              usage
+                              exit 0
+                              ;;
+                           *)
+                              echo "Not supported : ${BUILD_BOARD} "
+                              usage
+                              exit 0
+                              ;;
+                        esac
+                     }
+                     ;;
+                  "betaflight")
+                     {
+                        case ${BUILD_BOARD} in
+                           "LUX_RACE")
+                              ;;
+                           "SPARKY")
+                              ;;
+                           "SPRACINGF3")
+                              ;;
+                           "STM32F3DISCOVERY")
+                              ;;
+                           "ST_FCU_F401")
+                              echo "Not yet supported."
+                              usage
+                              exit 0
+                              ;;
+                           "STM32F745DISCOVERY")
+                              echo "Not yet supported."
+                              usage
+                              exit 0
+                              ;;
+                           *)
+                              echo "Not supported : ${BUILD_BOARD} "
+                              usage
+                              exit 0
+                              ;;
+                        esac
+                     }
+                     ;;
+                  "st")
+                     echo "Not yet supported for st in the gcc, should be build in the IAR"
+                     usage
+                     exit 0
+                     ;;
+                  *)
+                     echo "Not supported type in flight controller : ${BUILD_TYPE}"
+                     usage
+                     exit 0
+                     ;;
+               esac
+            }
+            ;;
+         "transmitter")
+            {
+               case ${BUILD_TYPE} in
+                  "nordic51822")
+                     ;;
+                  "nordic52832")
+                     echo "Not supported type for transmitter : ${BUILD_TYPE}"
+                     usage
+                     exit 0
+                     ;;
+                  "st")
+                     echo "Not yet supported for st in the gcc, should be build in the IAR"
+                     usage
+                     exit 0
+                     ;;
+                  *)
+                     echo "Not supported type for transmitter : ${BUILD_TYPE}"
+                     usage
+                     exit 0
+                     ;;
+               esac
+            }
+            ;;
+         *)
+            echo "Not supported platform : ${BUILD_PLATFORM}"
+            usage
+            exit 0
+            ;;
+      esac
+   }
+
+   # ====================================================================================
+   # check build machine
+
+   # for check platform, default is linux
+   unamestr=`uname`
+   if [[ "$unamestr" == 'Linux' ]]
+   then
+   {
+      echo "Select Linux platform"
+      BUILD_MACHINE="linux"
+   }
+   elif [[ "$unamestr" == 'Darwin' ]]
+   then
+   {
+      # os x
+      echo "Select Darwin platform"
+      BUILD_MACHINE="mac"
+   }
+   else
+   {
+      echo "Unknown build machine : $unamestr"
+      exit 0
+   }
+   fi
+
+   # ====================================================================================
+   # check option for toolchain
+   {
+      case ${BUILD_TOOLCHAIN} in
+         "4.9.3")
+            BUILD_TOOLCHAIN_PATH=${BUILD_ROOT_PATH}/toolchain/${BUILD_MACHINE}/${TOOLCHAIN_4_9_3_PATH_NAME}
+            BUILD_TOOLCHAIN_PREFIX=${TOOLCHAIN_4_9_3_PREFIX}
+            ;;
+         "5.4.1")
+            BUILD_TOOLCHAIN_PATH=${BUILD_ROOT_PATH}/toolchain/${BUILD_MACHINE}/${TOOLCHAIN_5_4_1_PATH_NAME}
+            BUILD_TOOLCHAIN_PREFIX=${TOOLCHAIN_5_4_1_PREFIX}
+            ;;
+         "6.3.1")
+            BUILD_TOOLCHAIN_PATH=${BUILD_ROOT_PATH}/toolchain/${BUILD_MACHINE}/${TOOLCHAIN_6_3_1_PATH_NAME}
+            BUILD_TOOLCHAIN_PREFIX=${TOOLCHAIN_6_3_1_PREFIX}
+            ;;
+         "7.2.1")
+            BUILD_TOOLCHAIN_PATH=${BUILD_ROOT_PATH}/toolchain/${BUILD_MACHINE}/${TOOLCHAIN_7_2_1_PATH_NAME}
+            BUILD_TOOLCHAIN_PREFIX=${TOOLCHAIN_7_2_1_PREFIX}
+            ;;
+         *)
+            ;;
+      esac
+   }
+
+   # ====================================================================================
+   # check toolchain
+   export PATH=${BUILD_TOOLCHAIN_PATH}/bin:$PATH
+
+   # check gcc compiler
+   echo ---------------------------------------------------------------------------------
+   ${BUILD_TOOLCHAIN_PREFIX}-gcc -v
+   echo ---------------------------------------------------------------------------------
+
+   if [ $? != 0 ]
+   then
+   {
+      echo
+      echo "Not found tool-chain for ARM Cortex-M !!!"
+      echo
+      exit 1
+   }
+   fi
+
+   # ====================================================================================
+   # build platform
+   {
+      case ${BUILD_PLATFORM} in
+         "fc")
+            {
+               case ${BUILD_TYPE} in
+                  "cleanflight")
+                     {
+                        build_cleanflight ${BUILD_BOARD}
+                     }
+                     ;;
+                  "betaflight")
+                     {
+                        build_betaflight ${BUILD_BOARD}
+                     }
+                     ;;
+                  "st")
+                     {
+                        echo "Not yet supported for st in the gcc, should be build in the IAR"
+                     }
+                     ;;
+                  *)
+                     echo "Not supported type in flight controller : ${BUILD_TYPE}"
+                     ;;
+               esac
+            }
+            ;;
+         "transmitter")
+            {
+               case ${BUILD_TYPE} in
+                  "nordic51822")
+                     {
+                        build_transmitter_nrf51822 TRANSMITTER_NORDIC51822 ${BUILD_TOOLCHAIN}
+                     }
+                     ;;
+                  "nordic52832")
+                     {
+                        build_transmitter_nrf52832 TRANSMITTER_NORDIC52832
+                        echo "Not supported type for transmitter : ${BUILD_TYPE}"
+                     }
+                     ;;
+                  "st")
+                     {
+                        build_transmitter_st TRANSMITTER_ST
+                        echo "Not yet supported for st in the gcc, should be build in the IAR"
+                     }
+                     ;;
+                  *)
+                     {
+                        echo "Not supported type for transmitter : ${BUILD_TYPE}"
+                     }
+                     ;;
+               esac
+            }
+            ;;
+         *)
+            {
+               echo "Not supported platform : ${BUILD_PLATFORM}"
+            }
+            ;;
+      esac
+   }
 }
 # ----------------------------------------------
 
