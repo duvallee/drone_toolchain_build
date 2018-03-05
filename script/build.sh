@@ -80,7 +80,7 @@ function usage()
 	echo "      SPRACINGF3"
 	echo "      STM32F3DISCOVERY"
 	echo "      ST_FCU_F401"
-	echo "      STM32F745DISCOVERY"
+	echo "      STM32F746DISCOVERY"
 	echo "  [TOOLCHAIN_VERSION]"
 	echo "    4.9.3"
 	echo "    5.4.1"
@@ -340,14 +340,8 @@ function build_transmitter_st()
                            "STM32F3DISCOVERY")
                               ;;
                            "ST_FCU_F401")
-                              echo "Not yet supported."
-                              usage
-                              exit 0
                               ;;
-                           "STM32F745DISCOVERY")
-                              echo "Not yet supported."
-                              usage
-                              exit 0
+                           "STM32F746DISCOVERY")
                               ;;
                            *)
                               echo "Not supported : ${BUILD_BOARD} "
